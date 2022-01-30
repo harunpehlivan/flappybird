@@ -84,11 +84,7 @@ def main():
     IMAGES['base'] = pygame.image.load('assets/sprites/base.png').convert_alpha()
 
     # sounds
-    if 'win' in sys.platform:
-        soundExt = '.wav'
-    else:
-        soundExt = '.ogg'
-
+    soundExt = '.wav' if 'win' in sys.platform else '.ogg'
     SOUNDS['die']    = pygame.mixer.Sound('assets/audio/die' + soundExt)
     SOUNDS['hit']    = pygame.mixer.Sound('assets/audio/hit' + soundExt)
     SOUNDS['point']  = pygame.mixer.Sound('assets/audio/point' + soundExt)
@@ -160,7 +156,7 @@ def showWelcomeAnimation():
             if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
                 pygame.quit()
                 sys.exit()
-            if event.type == KEYDOWN and (event.key == K_SPACE or event.key == K_UP):
+            if event.type == KEYDOWN and event.key in [K_SPACE, K_UP]:
                 # make first flap sound and return values for mainGame
                 SOUNDS['wing'].play()
                 return {
@@ -230,11 +226,14 @@ def mainGame(movementInfo):
             if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
                 pygame.quit()
                 sys.exit()
-            if event.type == KEYDOWN and (event.key == K_SPACE or event.key == K_UP):
-                if playery > -2 * IMAGES['player'][0].get_height():
-                    playerVelY = playerFlapAcc
-                    playerFlapped = True
-                    SOUNDS['wing'].play()
+            if (
+                event.type == KEYDOWN
+                and event.key in [K_SPACE, K_UP]
+                and playery > -2 * IMAGES['player'][0].get_height()
+            ):
+                playerVelY = playerFlapAcc
+                playerFlapped = True
+                SOUNDS['wing'].play()
 
         # check for crash here
         crashTest = checkCrash({'x': playerx, 'y': playery, 'index': playerIndex},
@@ -287,13 +286,13 @@ def mainGame(movementInfo):
             lPipe['x'] += pipeVelX
 
         # add new pipe when first pipe is about to touch left of screen
-        if len(upperPipes) > 0 and 0 < upperPipes[0]['x'] < 5:
+        if upperPipes and 0 < upperPipes[0]['x'] < 5:
             newPipe = getRandomPipe()
             upperPipes.append(newPipe[0])
             lowerPipes.append(newPipe[1])
 
         # remove first pipe if its out of the screen
-        if len(upperPipes) > 0 and upperPipes[0]['x'] < -IMAGES['pipe'][0].get_width():
+        if upperPipes and upperPipes[0]['x'] < -IMAGES['pipe'][0].get_width():
             upperPipes.pop(0)
             lowerPipes.pop(0)
 
@@ -310,9 +309,9 @@ def mainGame(movementInfo):
 
         # Player rotation has a threshold
         visibleRot = playerRotThr
-        if playerRot <= playerRotThr:
+        if playerRot <= visibleRot:
             visibleRot = playerRot
-        
+
         playerSurface = pygame.transform.rotate(IMAGES['player'][playerIndex], visibleRot)
         SCREEN.blit(playerSurface, (playerx, playery))
 
@@ -345,9 +344,12 @@ def showGameOverScreen(crashInfo):
             if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
                 pygame.quit()
                 sys.exit()
-            if event.type == KEYDOWN and (event.key == K_SPACE or event.key == K_UP):
-                if playery + playerHeight >= BASEY - 1:
-                    return
+            if (
+                event.type == KEYDOWN
+                and event.key in [K_SPACE, K_UP]
+                and playery + playerHeight >= BASEY - 1
+            ):
+                return
 
         # player y shift
         if playery + playerHeight < BASEY - 1:
@@ -358,9 +360,8 @@ def showGameOverScreen(crashInfo):
             playerVelY += playerAccY
 
         # rotate only when it's a pipe crash
-        if not crashInfo['groundCrash']:
-            if playerRot > -90:
-                playerRot -= playerVelRot
+        if not crashInfo['groundCrash'] and playerRot > -90:
+            playerRot -= playerVelRot
 
         # draw sprites
         SCREEN.blit(IMAGES['background'], (0,0))
@@ -372,7 +373,7 @@ def showGameOverScreen(crashInfo):
         SCREEN.blit(IMAGES['base'], (basex, BASEY))
         showScore(score)
 
-        
+
 
 
         playerSurface = pygame.transform.rotate(IMAGES['player'][1], playerRot)
@@ -411,10 +412,7 @@ def getRandomPipe():
 def showScore(score):
     """displays score in center of screen"""
     scoreDigits = [int(x) for x in list(str(score))]
-    totalWidth = 0 # total width of all numbers to be printed
-
-    for digit in scoreDigits:
-        totalWidth += IMAGES['numbers'][digit].get_width()
+    totalWidth = sum(IMAGES['numbers'][digit].get_width() for digit in scoreDigits)
 
     Xoffset = (SCREENWIDTH - totalWidth) / 2
 
@@ -429,32 +427,29 @@ def checkCrash(player, upperPipes, lowerPipes):
     player['w'] = IMAGES['player'][0].get_width()
     player['h'] = IMAGES['player'][0].get_height()
 
-    # if player crashes into ground
     if player['y'] + player['h'] >= BASEY - 1:
         return [True, True]
-    else:
+    playerRect = pygame.Rect(player['x'], player['y'],
+                  player['w'], player['h'])
+    pipeW = IMAGES['pipe'][0].get_width()
+    pipeH = IMAGES['pipe'][0].get_height()
 
-        playerRect = pygame.Rect(player['x'], player['y'],
-                      player['w'], player['h'])
-        pipeW = IMAGES['pipe'][0].get_width()
-        pipeH = IMAGES['pipe'][0].get_height()
+    for uPipe, lPipe in zip(upperPipes, lowerPipes):
+        # upper and lower pipe rects
+        uPipeRect = pygame.Rect(uPipe['x'], uPipe['y'], pipeW, pipeH)
+        lPipeRect = pygame.Rect(lPipe['x'], lPipe['y'], pipeW, pipeH)
 
-        for uPipe, lPipe in zip(upperPipes, lowerPipes):
-            # upper and lower pipe rects
-            uPipeRect = pygame.Rect(uPipe['x'], uPipe['y'], pipeW, pipeH)
-            lPipeRect = pygame.Rect(lPipe['x'], lPipe['y'], pipeW, pipeH)
+        # player and upper/lower pipe hitmasks
+        pHitMask = HITMASKS['player'][pi]
+        uHitmask = HITMASKS['pipe'][0]
+        lHitmask = HITMASKS['pipe'][1]
 
-            # player and upper/lower pipe hitmasks
-            pHitMask = HITMASKS['player'][pi]
-            uHitmask = HITMASKS['pipe'][0]
-            lHitmask = HITMASKS['pipe'][1]
+        # if bird collided with upipe or lpipe
+        uCollide = pixelCollision(playerRect, uPipeRect, pHitMask, uHitmask)
+        lCollide = pixelCollision(playerRect, lPipeRect, pHitMask, lHitmask)
 
-            # if bird collided with upipe or lpipe
-            uCollide = pixelCollision(playerRect, uPipeRect, pHitMask, uHitmask)
-            lCollide = pixelCollision(playerRect, lPipeRect, pHitMask, lHitmask)
-
-            if uCollide or lCollide:
-                return [True, False]
+        if uCollide or lCollide:
+            return [True, False]
 
     return [False, False]
 
